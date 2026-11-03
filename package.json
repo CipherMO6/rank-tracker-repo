@@ -1,0 +1,17 @@
+{
+  "name": "rank-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/bridge.js --bundle --minify --format=iife --outfile=www/bridge.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capgo/capacitor-health": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "esbuild": "^0.25.0"
+  }
+}
