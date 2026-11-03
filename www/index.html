@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rank Tracker</title>
+<style>
+:root{--bg:#e9ebe6;--card:#fff;--ink:#161a1c;--mut:#5b6469;--line:#d3d8d2;--rk:#8a9099;--ok:#1f8a4c;--bad:#c2362b;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#141a1c;--card:#1c2326;--ink:#e6ebe8;--mut:#8f9a9e;--line:#2c373b;--ok:#5fd08a;--bad:#ff7b6e;color-scheme:dark}}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Barlow Condensed","Roboto Condensed","Arial Narrow",system-ui,sans-serif;font-size:17px;line-height:1.35}
+main{max-width:520px;margin:0 auto;padding:14px 14px 40px}
+.rank{border:2px solid var(--rk);border-radius:6px;padding:16px;background:var(--card);position:relative}
+.rank .n{font-size:3.4rem;font-weight:700;line-height:.95;color:var(--rk);letter-spacing:.01em}
+.rank .t{font-size:1.1rem;color:var(--mut)}
+.bar{height:12px;background:var(--line);margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--rk);width:0}
+.bar.sm{height:8px;margin-top:6px}
+.bar.sm i{background:var(--ink)}
+.bar.ok i{background:var(--ok)}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.cell{background:var(--card);border:1px solid var(--line);padding:8px 10px}
+.cell b{display:block;font-size:1.6rem}
+.cell span{color:var(--mut)}
+.p{background:var(--card);border:1px solid var(--line);padding:12px;margin-bottom:12px}
+.p h2{margin:0 0 8px;font-size:1.3rem}
+.tag{font-weight:700}
+.tag.y{color:var(--ok)}.tag.n{color:var(--bad)}
+.blk{padding:8px 0;border-top:1px solid var(--line)}
+.blk:first-of-type{border-top:0}
+input,button{font:inherit;color:inherit}
+input{background:var(--bg);border:1px solid var(--line);padding:8px;min-width:0;width:100%}
+button{background:var(--ink);color:var(--bg);border:0;padding:8px 12px;font-weight:700;cursor:pointer}
+button.g{background:none;color:var(--ink);border:1px solid var(--line)}
+button.run{background:var(--bad);color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid var(--rk);outline-offset:2px}
+.btns{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+label{display:block;color:var(--mut);margin-top:8px}
+.m{color:var(--mut);font-size:.95rem;margin:4px 0}
+.hl{display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid var(--line)}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+  <div class="rank" id="rank"></div>
+  <div class="grid">
+    <div class="cell"><b id="streak">0</b><span>Win streak</span></div>
+    <div class="cell"><b id="best">0</b><span>Best streak</span></div>
+    <div class="cell"><b id="wk">0/7</b><span>Week wins</span></div>
+  </div>
+  <div class="p" id="proj"></div>
+
+  <div class="p"><h2>Study</h2><p class="m">One stopwatch session counts at most 4 hours and stops at midnight, so a forgotten timer earns nothing extra.</p><div id="blocks"></div></div>
+
+  <div class="p"><h2>Health</h2>
+    <div class="row"><span>Steps today</span><span id="stp"></span></div>
+    <div class="bar sm" id="stbar"><i></i></div>
+    <label for="steps">Steps (manual entry is open only when Health Connect isn’t syncing)</label>
+    <input type="number" id="steps" inputmode="numeric" min="0">
+    <div class="btns"><button class="g" id="pull" hidden>Sync from Health Connect</button></div>
+    <p class="m" id="hmsg"></p>
+  </div>
+
+  <div class="p"><h2>Schedule</h2>
+    <label for="wake">Woke up at</label><input type="time" id="wake">
+    <label for="sleep">Going to sleep at (log before bed)</label><input type="time" id="sleep">
+    <p class="m" id="schm"></p>
+  </div>
+
+  <div class="p"><h2>Last 14 days</h2><div id="hist"></div></div>
+
+  <div class="p"><h2>Boundaries</h2>
+    <label for="cw">Wake deadline</label><input type="time" id="cw">
+    <label for="cs">Sleep deadline</label><input type="time" id="cs">
+    <label for="cst">Daily steps line</label><input type="number" id="cst" inputmode="numeric">
+    <div class="btns"><button id="save">Save (applies tomorrow)</button></div>
+    <p class="m" id="nextm"></p>
+    <p class="m">Changes never apply to today, so you can’t loosen the line on a bad day.</p>
+    <div class="btns"><button class="g" id="bk">Copy backup</button><button class="g" id="rs">Restore backup</button><button class="g" id="reset">Reset everything</button></div>
+  </div>
+</main>
+<script src="bridge.js"></script>
+<script>
+(function(){
+var KEY="rank_state_v1",TIER=300;
+var NAMES=["Rookie","Veteran","Elite","Pro","Master","Grandmaster","Legendary"];
+var COL=["#8a9099","#4fa36b","#3d8bd9","#8a5ad6","#e08a2e","#d6453d","#d9b13b"];
+var ROM=["I","II","III","IV","V"];
+function $(i){return document.getElementById(i)}
+function ymd(d){d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function addDays(s,n){var p=s.split("-");return ymd(new Date(+p[0],+p[1]-1,+p[2]+n))}
+function fresh(){return{cfg:{wake:"06:00",sleep:"23:30",steps:7000,blocks:[
+ {id:"isiC",n:"ISI: reading and concepts",m:90},{id:"isiP",n:"ISI: problem solving",m:90},
+ {id:"isiV",n:"ISI: variations, revision, mocks",m:60},{id:"col",n:"College",m:180}]},
+ next:null,rp:0,best:0,streak:0,wk:{d:0,w:0,p:0},days:{},hist:[],last:ymd(),run:null}}
+var S;try{var r=localStorage.getItem(KEY);S=r?JSON.parse(r):fresh()}catch(e){S=fresh()}
+if(!S||!S.cfg)S=fresh();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function rec(d){return S.days[d]||(S.days[d]={b:{},steps:0,wake:"",sleep:""})}
+function mins(t,sl){if(!t)return null;var a=t.split(":"),m=+a[0]*60+ +a[1];if(sl&&m<240)m+=1440;return m}
+function evalDay(R,cfg){
+  var sumT=0,tot=0,ok=true;
+  cfg.blocks.forEach(function(b){var v=R.b[b.id]||0;sumT+=b.m;tot+=v;if(v<b.m-0.01)ok=false});
+  var hl=(R.steps||0)>=cfg.steps;
+  var sc=!!(R.wake&&R.sleep&&mins(R.wake)<=mins(cfg.wake)&&mins(R.sleep,1)<=mins(cfg.sleep,1));
+  var p=(ok?1:0)+(hl?1:0)+(sc?1:0),pts=0,mvp=false;
+  if(p===3){mvp=tot>=sumT*1.15&&(R.steps||0)>=cfg.steps*1.4;pts=mvp?120:90}
+  else if(p===2)pts=20;else if(p===1)pts=-30;else pts=-60;
+  return{st:ok,hl:hl,sc:sc,p:p,pts:pts,mvp:mvp,tot:tot,sumT:sumT};
+}
+function processDay(d){
+  var R=S.days[d]||{b:{},steps:0,wake:"",sleep:""},e=evalDay(R,S.cfg),bonus=0;
+  S.rp=Math.max(0,S.rp+e.pts);
+  S.streak=e.p===3?S.streak+1:0;S.best=Math.max(S.best,S.streak);
+  S.wk.d++;if(e.p===3)S.wk.w++;if(e.pts>0)S.wk.p+=e.pts;
+  if(S.wk.d===7){if(S.wk.w===7){bonus=Math.round(S.wk.p*0.3);S.rp+=bonus}S.wk={d:0,w:0,p:0}}
+  S.hist.push({d:d,p:e.p,pts:e.pts,bonus:bonus});if(S.hist.length>60)S.hist.shift();
+}
+function rollover(){
+  var t=ymd();
+  while(S.last<t){
+    if(S.run){var q=S.last.split("-"),mid=new Date(+q[0],+q[1]-1,+q[2]+1).getTime();
+      if(S.run.ts<mid){var Rr=rec(S.last);Rr.b[S.run.id]=(Rr.b[S.run.id]||0)+seg(S.run.ts,mid);S.run=null}else S.run=null}
+    processDay(S.last);S.last=addDays(S.last,1);if(S.next){S.cfg=S.next;S.next=null}
+  }
+}
+function rankOf(rp){var i=Math.floor(rp/TIER);if(i>=30)return{n:NAMES[6],t:"",c:6,p:rp-9000};return{n:NAMES[Math.floor(i/5)],t:ROM[i%5],c:Math.floor(i/5),p:rp%TIER}}
+var MAXRUN=240;
+function seg(ts,end){return Math.min(Math.max(0,(end-ts)/60000),MAXRUN)}
+function liveMin(id){return S.run&&S.run.id===id?seg(S.run.ts,Date.now()):0}
+function stop(){
+  if(!S.run)return;var R=rec(ymd());R.b[S.run.id]=(R.b[S.run.id]||0)+seg(S.run.ts,Date.now());S.run=null;
+}
+function fm(m){m=Math.floor(m);return Math.floor(m/60)+"h "+String(m%60).padStart(2,"0")+"m"}
+function render(light){
+  var t=ymd(),R=rec(t),k=rankOf(S.rp);
+  document.documentElement.style.setProperty("--rk",COL[k.c]);
+  $("rank").innerHTML='<div class="t">Current rank</div><div class="n">'+k.n+' '+k.t+'</div>'+
+   (k.c===6?'<div class="t">'+k.p+' RP above Legendary entry ('+S.rp+' total)</div>':'<div class="row t"><span>'+k.p+' / '+TIER+' RP</span><span>'+S.rp+' total</span></div><div class="bar"><i style="width:'+(k.p/TIER*100)+'%"></i></div>');
+  $("streak").textContent=S.streak;$("best").textContent=S.best;$("wk").textContent=S.wk.w+"/"+S.wk.d+" ("+(7-S.wk.d)+" left)";
+  // live minutes included
+  var R2=JSON.parse(JSON.stringify(R));if(S.run)R2.b[S.run.id]=(R2.b[S.run.id]||0)+liveMin(S.run.id);
+  var e=evalDay(R2,S.cfg);
+  function tg(v){return '<span class="tag '+(v?'y':'n')+'">'+(v?'PASS':'NOT YET')+'</span>'}
+  $("proj").innerHTML='<h2 style="margin:0 0 6px;font-size:1.3rem">If today ended now</h2><div class="hl"><span>Study</span>'+tg(e.st)+'</div><div class="hl"><span>Health</span>'+tg(e.hl)+'</div><div class="hl"><span>Schedule</span>'+tg(e.sc)+'</div><div class="hl"><b>Result</b><b class="'+(e.pts>=0?'pos':'neg')+'">'+(e.pts>0?'+':'')+e.pts+' RP'+(e.mvp?' (MVP)':'')+'</b></div><p class="m">3 of 3: +90. MVP (study 15% over, steps 40% over): +120. 2 of 3: +20. 1 of 3: −30. 0 of 3: −60. Day closes at midnight.</p>';
+  var h="";
+  S.cfg.blocks.forEach(function(b){
+    var v=(R.b[b.id]||0)+liveMin(b.id),run=S.run&&S.run.id===b.id;
+    h+='<div class="blk"><div class="row"><span>'+b.n+'</span><span id="bv-'+b.id+'">'+fm(v)+' / '+fm(b.m)+'</span></div><div class="bar sm '+(v>=b.m?'ok':'')+'"><i id="bi-'+b.id+'" style="width:'+Math.min(100,v/b.m*100)+'%"></i></div><div class="btns"><button class="'+(run?'run':'')+'" data-s="'+b.id+'">'+(run?'Stop':'Start')+'</button><button class="g" data-a="'+b.id+'" data-v="15">+15</button><button class="g" data-a="'+b.id+'" data-v="-15">−15</button></div></div>';
+  });
+  if(light&&$("bv-"+S.cfg.blocks[0].id)){S.cfg.blocks.forEach(function(b){var v=(R.b[b.id]||0)+liveMin(b.id);$("bv-"+b.id).textContent=fm(v)+" / "+fm(b.m);var i=$("bi-"+b.id);i.style.width=Math.min(100,v/b.m*100)+"%";i.parentNode.className="bar sm "+(v>=b.m?"ok":"")})}else $("blocks").innerHTML=h;
+  $("stp").textContent=(R.steps||0)+" / "+S.cfg.steps;
+  $("stbar").className="bar sm "+((R.steps||0)>=S.cfg.steps?"ok":"");$("stbar").firstChild.style.width=Math.min(100,(R.steps||0)/S.cfg.steps*100)+"%";
+  $("schm").textContent="Lines today: wake by "+S.cfg.wake+", sleep by "+S.cfg.sleep+". Missing a log counts as a miss.";
+  var hh="";S.hist.slice(-14).reverse().forEach(function(x){hh+='<div class="hl"><span>'+x.d+'  ('+x.p+'/3)'+(x.bonus?' + weekly bonus '+x.bonus:'')+'</span><span class="'+(x.pts>=0?'pos':'neg')+'">'+(x.pts>0?'+':'')+x.pts+'</span></div>'});
+  $("hist").innerHTML=hh||'<p class="m">No closed days yet. Your first result lands at midnight.</p>';
+  $("nextm").textContent=S.next?"Queued for tomorrow: wake "+S.next.wake+", sleep "+S.next.sleep+", steps "+S.next.steps+".":"";
+}
+function fill(){
+  var R=rec(ymd());$("steps").value=R.steps||"";$("wake").value=R.wake||"";$("sleep").value=R.sleep||"";
+  $("cw").value=S.cfg.wake;$("cs").value=S.cfg.sleep;$("cst").value=S.cfg.steps;
+}
+$("blocks").addEventListener("click",function(e){
+  var b=e.target.closest("button");if(!b)return;
+  if(b.dataset.s){var id=b.dataset.s,was=S.run&&S.run.id===id;stop();if(!was)S.run={id:id,ts:Date.now()}}
+  else if(b.dataset.a){var R=rec(ymd());R.b[b.dataset.a]=Math.max(0,(R.b[b.dataset.a]||0)+ +b.dataset.v)}
+  save();render();
+});
+$("steps").onchange=function(){rec(ymd()).steps=Math.max(0,+this.value||0);save();render()};
+$("wake").onchange=function(){rec(ymd()).wake=this.value;save();render()};
+$("sleep").onchange=function(){rec(ymd()).sleep=this.value;save();render()};
+$("save").onclick=function(){
+  var s=+$("cst").value;if(!$("cw").value||!$("cs").value||!(s>0))return;
+  S.next={wake:$("cw").value,sleep:$("cs").value,steps:s,blocks:S.cfg.blocks};save();render();
+};
+$("reset").onclick=function(){if(confirm("Wipe rank, streaks and history?")){S=fresh();save();fill();render()}};
+$("bk").onclick=function(){var s=JSON.stringify(S);try{navigator.clipboard.writeText(s).then(function(){alert("Backup copied. Paste it somewhere safe.")},function(){prompt("Copy this backup:",s)})}catch(e){prompt("Copy this backup:",s)}};
+$("rs").onclick=function(){var s=prompt("Paste backup:");if(!s)return;try{var o=JSON.parse(s);if(!o.cfg||!o.days)throw 0;S=o;rollover();save();fill();render()}catch(e){alert("That backup is not valid.")}};
+/* Android build: bridge.js defines window.HealthBridge.steps() */
+var HB=window.HealthBridge;
+function pull(){
+  if(!HB)return;
+  $("hmsg").textContent="Syncing…";
+  HB.steps().then(function(n){rec(ymd()).steps=n;$("steps").disabled=true;$("hmsg").textContent="Synced from Health Connect at "+new Date().toTimeString().slice(0,5)+".";save();fill();render()})
+   .catch(function(e){$("steps").disabled=false;$("hmsg").textContent="Sync failed ("+(e&&e.message||"error")+"). Manual entry is open until it works."});
+}
+if(HB){$("pull").hidden=false;$("pull").onclick=pull}
+rollover();save();fill();render();pull();
+setInterval(pull,120000);
+setInterval(function(){var l=S.last;rollover();if(S.last!==l){save();fill();render()}else if(S.run)render(true)},1000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden){rollover();save();fill();render();pull()}});
+})();
+</script>
+</body>
+</html>
